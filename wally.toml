@@ -1,5 +1,5 @@
 [package]
-name = "z5151/spinner"
+name = "devirradiant/spinner"
 version = "0.1.0"
 registry = "https://github.com/UpliftGames/wally-index"
 realm = "shared"
