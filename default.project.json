@@ -1,12 +1,6 @@
 {
-  "name": "Spinner",
-  "tree": {
-    "$className": "DataModel",
-
-    "ReplicatedStorage": {
-      "Shared": {
-        "$path": "src"
-      }
-    }
-  }
+	"name": "Spinner",
+	"tree": {
+		"$path": "src"
+	}
 }
