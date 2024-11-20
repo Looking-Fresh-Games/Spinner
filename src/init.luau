@@ -1,5 +1,8 @@
 --!strict
+local Players = game:GetService("Players")
+local PolicyService = game:GetService("PolicyService")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 --[[
     Spinner.lua
     Author: Zach Curtis (InfinityDesign)
@@ -16,10 +19,19 @@ export type RewardData = {
     Color: Color3,
 }
 
+export type InterfaceData = {
+    SpinButton: ImageButton | TextButton,
+    Flipper: ImageLabel,
+    SliceTemplate: ImageLabel,
+    SliceContainer: ImageLabel,
+    MTXButtons: {ImageButton}
+}
+
 export type ConfigurationTable = {
     Rewards: {RewardData},
-    AngularVelocity: number,
+    Speed: number,
     DecayRate: number,
+    Interface: InterfaceData
 }
 
 -- Return false if they don't have any spins, otherwise return the index of the reward the spin animation should land on
@@ -30,29 +42,35 @@ export type RewardCallback = (reward: RewardData) -> nil
 local Spinner = {}
 Spinner.__index = Spinner
 
-function Spinner.new(config: ConfigurationTable, spinButton: ImageButton | TextButton, flipper: ImageLabel, slice: ImageLabel, sliceContainer: ImageLabel | Frame)
+function Spinner.new(config: ConfigurationTable)
     local self = setmetatable({}, Spinner)
 
     -- External refs
     self.Configuration = config
-    self.SpinButton = spinButton
-    self.Flipper = flipper
-    self.Container = sliceContainer
+    self.SpinButton = config.Interface.SpinButton
+    self.Flipper = config.Interface.Flipper
+    self.Container = config.Interface.SliceContainer
+    self.MTXButtons = config.Interface.MTXButtons
     
     -- Internal refs
-    self._sliceTemplate = slice
+    self._sliceTemplate = config.Interface.SliceTemplate
     self._spinCallback = nil :: SpinCallback?
     self._rewardCallback = nil :: RewardCallback?
     self._activeSlices = {} :: {ImageLabel}
     self._stepped = nil :: RBXScriptConnection?
+    self._flipperConnection = nil :: RBXScriptConnection?
 
     -- State
     self._animationAlpha = 0
     self._spinning = false
     self._requestingSpin = false
+    self._canBuySpins = true
 
     -- Setup
     self:_initSpinner()
+
+    -- Handle PolicyService
+    self:_initPolicyService()
 
     return self
 end
@@ -70,6 +88,26 @@ end
 -- Used to force a spin externally, such as in ProcessReceipt
 function Spinner:ForceSpin(rewardIndex: number)
     self:_spin(rewardIndex)
+end
+
+
+-- Ensure Player has access to paid random items, hide purchase buttons if not
+function Spinner:_initPolicyService()
+    local success, result = pcall(function()
+        return PolicyService:GetPolicyInfoForPlayerAsync(Players.LocalPlayer)
+    end)
+    
+    -- Async failed
+    if not success then
+        warn(result)
+    
+    -- Restricted
+    elseif result.ArePaidRandomItemsRestricted then
+        self._canBuySpins = false
+        for _, button in self.MTXButtons do
+            button.Visible = false
+        end
+    end
 end
 
 
@@ -123,38 +161,101 @@ end
 function Spinner:_spin(rewardIndex: number)
     self._spinning = true
 
+    -- variables
     local sliceRotation = 360 / #self.Configuration.Rewards
+    local speed = self.Configuration.Speed :: number
+    local isDecaying = false
+    local currentIndex = self:_getCurrentIndex() :: number
+    local lastIndex = currentIndex
     
-    local currentIndex = self:_getCurrentIndex()
-    local distanceToTarget -- Distance to the target in angles
+    -- distance to be initially travelled
+    local initialDistance = 360 * 5 -- force 2 spin minimum
+    local distanceToTravel = initialDistance
 
-    if rewardIndex > currentIndex then
-        distanceToTarget = (rewardIndex - currentIndex) * sliceRotation
-    else
-        distanceToTarget = (rewardIndex + #self.Configuration.Rewards) * sliceRotation
-    end
+    -- target reward may be a slice BEFORE the current index. handle this, and calculate distance to reward
+    local slicesToReward = if rewardIndex - currentIndex >= 0 then rewardIndex - currentIndex else #self.Configuration.Rewards - rewardIndex
+    local distanceToReward = sliceRotation * slicesToReward
 
-    -- Distance to target in alpha
-    local alphaToTarget = 360 / distanceToTarget
+    -- add extra spins for decay
+    distanceToReward += 360 * 4
 
-    print("weeeeeeee")
+    -- assess full target angle, account for container's current angle
+    local targetAngle = distanceToTravel + distanceToReward - (self.Container.Rotation % 360)
 
+    -- apply initial rotation to flipper
+    local flipperOffset = 15
+    self.Flipper.Rotation = flipperOffset
+
+    -- establish connection
     self._stepped = RunService.RenderStepped:Connect(function(deltaTime: number)
+        -- determine if decay should begin, if so, add distancetoreward
+        if math.floor(distanceToTravel) <= 0 and not isDecaying then
+            distanceToTravel += distanceToReward
+            isDecaying = true
 
+        -- ended, snap to angle and cleanup
+        elseif math.floor(distanceToTravel) <= 0 and isDecaying then
+            if self._stepped then
+                self.Container.Rotation = -targetAngle
+                self._stepped:Disconnect()
+                self._stepped = nil
+
+                self._spinning = false
+            end
+            if self._flipperConnection then
+                self.Flipper.Rotation = 0
+                self._flipperConnection:Disconnect()
+                self._flipperConnection = nil
+            end
+
+            return
+        end
+
+        -- apply alpha to speed for decay
+        if isDecaying then
+            local alpha = TweenService:GetValue(distanceToTravel / distanceToReward, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+            alpha = math.clamp(alpha, 0.05, 1)
+            speed = self.Configuration.Speed * alpha
+
+            -- apply rotation to flipper if new slice is entered, and if alpha is low enough, setup auto-correcting listener
+            if alpha <= 0.3 then
+                if not self._flipperConnection then
+                    self._flipperConnection = self.Flipper:GetPropertyChangedSignal("Rotation"):Connect(function() -- TODO clean this ugliness up @Michael
+                        if self.Flipper.Rotation == flipperOffset then
+                            task.wait(0.02)
+                            self.Flipper.Rotation = 0
+                        end
+                    end)
+                    self.Flipper.Rotation = 0
+                end
+
+                -- apply flipper effect if new slice was entered
+                currentIndex = self:_getCurrentIndex()
+                if currentIndex ~= lastIndex then
+                    lastIndex = currentIndex
+                    self.Flipper.Rotation = flipperOffset
+                end
+            end
+        end
+
+        -- apply rotation
+        self.Container.Rotation -= speed * deltaTime
+        distanceToTravel -= speed * deltaTime
     end)
-
-    self._spinning = false
 end
 
 -- Returns the current reward index based on the animation angle
 function Spinner:_getCurrentIndex(): number
-    if self._animationAlpha == 0 then
+    if self.Container.Rotation % 360 == 0 then
         return 1
     end
 
-    local alphaPerIndex = 1 / #self.Configuration.Rewards
+    local degreesPerIndex = 360 / #self.Configuration.Rewards
+    local assessmentDegree = self.Container.Rotation % 360
+    --local ccwIndex = math.round(assessmentDegree / degreesPerIndex) + 1 -- counter clockwise
+    local cwIndex = math.abs(math.round(assessmentDegree / degreesPerIndex) - 1 - #self.Configuration.Rewards) -- clockwise
 
-    return math.round(self._animationAlpha / alphaPerIndex) + 1
+    return cwIndex
 end
 
 return Spinner
