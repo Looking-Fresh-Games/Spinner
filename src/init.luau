@@ -2,6 +2,7 @@
 local Players = game:GetService("Players")
 local PolicyService = game:GetService("PolicyService")
 local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
 local TweenService = game:GetService("TweenService")
 --[[
     Spinner.lua
@@ -167,6 +168,11 @@ function Spinner:_spin(rewardIndex: number)
     local isDecaying = false
     local currentIndex = self:_getCurrentIndex() :: number
     local lastIndex = currentIndex
+
+    -- sfx
+    local sound = Instance.new("Sound")
+    sound.Parent = script
+    sound.SoundId = "rbxassetid://9119713951"
     
     -- distance to be initially travelled
     local initialDistance = 360 * 5 -- force 2 spin minimum
@@ -207,6 +213,9 @@ function Spinner:_spin(rewardIndex: number)
                 self._flipperConnection:Disconnect()
                 self._flipperConnection = nil
             end
+            if sound then
+                sound:Destroy()
+            end
 
             return
         end
@@ -228,14 +237,16 @@ function Spinner:_spin(rewardIndex: number)
                     end)
                     self.Flipper.Rotation = 0
                 end
-
-                -- apply flipper effect if new slice was entered
-                currentIndex = self:_getCurrentIndex()
-                if currentIndex ~= lastIndex then
-                    lastIndex = currentIndex
-                    self.Flipper.Rotation = flipperOffset
-                end
             end
+        end
+
+        -- apply flipper effects if new slice was entered
+        currentIndex = self:_getCurrentIndex()
+        if currentIndex ~= lastIndex then
+            lastIndex = currentIndex
+
+            SoundService:PlayLocalSound(sound)
+            self.Flipper.Rotation = flipperOffset
         end
 
         -- apply rotation
