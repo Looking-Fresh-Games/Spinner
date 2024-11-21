@@ -186,7 +186,7 @@ function Spinner:_spin(rewardIndex: number)
     local distanceToTravel = initialDistance
 
     -- target reward may be a slice BEFORE the current index. handle this, and calculate distance to reward
-    local slicesToReward = if rewardIndex - currentIndex >= 0 then rewardIndex - currentIndex else #self.Configuration.Rewards - rewardIndex
+    local slicesToReward = if rewardIndex - currentIndex >= 0 then rewardIndex - currentIndex else #self.Configuration.Rewards - currentIndex + rewardIndex
     local distanceToReward = sliceRotation * slicesToReward
 
     -- add extra spins for decay
