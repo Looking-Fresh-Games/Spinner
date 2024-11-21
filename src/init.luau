@@ -1,9 +1,5 @@
 --!strict
-local Players = game:GetService("Players")
-local PolicyService = game:GetService("PolicyService")
-local RunService = game:GetService("RunService")
-local SoundService = game:GetService("SoundService")
-local TweenService = game:GetService("TweenService")
+
 --[[
     Spinner.lua
     Author: Zach Curtis (InfinityDesign)
@@ -12,6 +8,11 @@ local TweenService = game:GetService("TweenService")
 ]]--
 
 -- Services
+local Players = game:GetService("Players")
+local PolicyService = game:GetService("PolicyService")
+local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
+local TweenService = game:GetService("TweenService")
 
 -- Types
 export type RewardData = {
@@ -38,6 +39,7 @@ export type ConfigurationTable = {
 -- Return false if they don't have any spins, otherwise return the index of the reward the spin animation should land on
 export type SpinCallback = () -> boolean | number
 export type RewardCallback = (reward: RewardData) -> nil
+
 
 -- Class
 local Spinner = {}
@@ -66,6 +68,10 @@ function Spinner.new(config: ConfigurationTable)
     self._spinning = false
     self._requestingSpin = false
     self._canBuySpins = true
+
+    -- Signals
+    self._spinnerToggled = Instance.new("BindableEvent")
+    self._spinnerToggled.Parent = script
 
     -- Setup
     self:_initSpinner()
@@ -161,6 +167,7 @@ end
 -- Spin the wheel
 function Spinner:_spin(rewardIndex: number)
     self._spinning = true
+    self._spinnerToggled:Fire(false)
 
     -- variables
     local sliceRotation = 360 / #self.Configuration.Rewards
@@ -205,8 +212,6 @@ function Spinner:_spin(rewardIndex: number)
                 self.Container.Rotation = -targetAngle
                 self._stepped:Disconnect()
                 self._stepped = nil
-
-                self._spinning = false
             end
             if self._flipperConnection then
                 self.Flipper.Rotation = 0
@@ -216,6 +221,9 @@ function Spinner:_spin(rewardIndex: number)
             if sound then
                 sound:Destroy()
             end
+
+            self._spinning = false
+            self._spinnerToggled:Fire(true)
 
             return
         end
