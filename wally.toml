@@ -1,6 +1,6 @@
 [package]
-name = "devirradiant/spinner"
-version = "0.1.4"
+name = "lfg-studio/spinner"
+version = "0.1.5"
 registry = "https://github.com/UpliftGames/wally-index"
 realm = "shared"
 
