@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'src/*/wally.toml'
+      - 'wally.toml'
 
 jobs:
   publish:
